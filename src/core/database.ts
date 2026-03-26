@@ -22,12 +22,13 @@ class DatabaseService {
       
       // Debug: Log environment variables (without password)
       logger.info('🔍 Environment check:');
+      logger.info(`  - MYSQL_URL: ${process.env.MYSQL_URL ? '***SET***' : 'NOT SET'}`);
       logger.info(`  - MYSQLHOST: ${process.env.MYSQLHOST || 'NOT SET'}`);
       logger.info(`  - MYSQLPORT: ${process.env.MYSQLPORT || 'NOT SET'}`);
       logger.info(`  - MYSQLUSER: ${process.env.MYSQLUSER || 'NOT SET'}`);
       logger.info(`  - MYSQLDATABASE: ${process.env.MYSQLDATABASE || 'NOT SET'}`);
       logger.info(`  - MYSQLPASSWORD: ${process.env.MYSQLPASSWORD ? '***SET***' : 'NOT SET'}`);
-
+      logger.info(`  - Parsed config: ${config.mysql.host}:${config.mysql.port}`);
       // Create connection pool
       this.pool = mysql.createPool({
         host: config.mysql.host,

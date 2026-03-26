@@ -4,41 +4,40 @@ dotenv.config();
 
 // Parse MySQL Configuration from Railway Environment
 function parseMySQLConfig() {
-  const mysqlUrl = process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL;
-  
-  // Default values from environment or fallbacks
-  let host = process.env.MYSQLHOST;
+  const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PUBLIC_URL;
+
+  // Step 1: Start with individual env vars (highest priority — Railway injects these directly)
+  let host = process.env.MYSQLHOST || '';
   let port = parseInt(process.env.MYSQLPORT || '3306', 10);
-  let user = process.env.MYSQLUSER || 'root';
-  let password = process.env.MYSQLPASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
-  let database = process.env.MYSQLDATABASE || 'railway';
+  let user = process.env.MYSQLUSER || process.env.MYSQL_USER || '';
+  let password = process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
+  let database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'railway';
 
-  // 1. Extra smart password/host extraction using Regex (robust against malformed URLs)
+  // Step 2: Fill in any MISSING values from the URL (URL is fallback, not override)
   if (mysqlUrl) {
-    // Matches: mysql://user:pass@host:port/database
-    const regex = /mysql:\/\/([^:]+):([^@]+)@([^:/]*):?(\d*)\/(.+)/;
-    const match = mysqlUrl.match(regex);
-
-    if (match) {
+    try {
+      // Use Node's built-in URL parser — handles special chars & percent-encoding correctly
+      const parsed = new URL(mysqlUrl);
       console.log('🔑 Found credentials in Database URL...');
-      const [_, u, p, h, prt, db] = match;
-      if (u) user = u;
-      if (p) password = decodeURIComponent(p);
-      if (h && h !== '') host = h;
-      if (prt) port = parseInt(prt, 10);
-      if (db) database = db;
+
+      if (!user && parsed.username) user = decodeURIComponent(parsed.username);
+      if (!password && parsed.password) password = decodeURIComponent(parsed.password);
+      if (!host && parsed.hostname) host = parsed.hostname;
+      if (parsed.port && !process.env.MYSQLPORT) port = parseInt(parsed.port, 10);
+      const dbFromUrl = parsed.pathname.replace(/^\//, '');
+      if (!database || database === 'railway') database = dbFromUrl || database;
+    } catch (err) {
+      console.warn('⚠️  Could not parse MYSQL_URL — skipping URL-based credential extraction.');
     }
   }
 
-  // 2. Resolve Host / Priority Fallback
+  // Step 3: Resolve host with Railway fallback
   if (!host || host === '' || host === '(empty)' || host.startsWith('${{')) {
     if (process.env.RAILWAY_ENVIRONMENT) {
-      // Use Railway Private Networking Host
       host = 'mysql.railway.internal';
       port = 3306;
-      console.log(`🌐 Railway Environment detected. Attempting internal host: "${host}"`);
+      console.log(`🌐 Railway Environment detected. Using internal host: "${host}"`);
     } else {
-      // Use Railway Public Proxy Fallback (User provided)
       host = 'crossover.proxy.rlwy.net';
       port = 26236;
       console.log(`🌐 Using project-specific public proxy fallback: ${host}:${port}`);
@@ -47,11 +46,11 @@ function parseMySQLConfig() {
     console.log(`✅ Using configured host: ${host}`);
   }
 
-  // Debug Info (Masked for security but helpful for verification)
+  // Step 4: Final credential source report (masked for security)
   const passHint = password ? password.substring(0, 3) : 'NONE';
   console.log('🔍 Database Parameters Check:');
+  console.log(`   - User: ${user || '(NOT SET)'}`);
   console.log(`   - Host: ${host}:${port}`);
-  console.log(`   - User: ${user}`);
   console.log(`   - DB:   ${database}`);
   console.log(`   - Pass: ${passHint}... (${password.length} characters)`);
 
@@ -59,12 +58,17 @@ function parseMySQLConfig() {
     throw new Error('❌ FATAL: No database host found in production.');
   }
 
+  if (!user || !password) {
+    console.warn('⚠️  WARNING: MySQL user or password is empty! Connection will likely fail.');
+    console.warn('   Set MYSQLUSER and MYSQLPASSWORD in your Railway Backend service variables.');
+  }
+
   return {
     host: host || 'localhost',
-    port: port,
-    user: user,
-    password: password,
-    database: database,
+    port,
+    user: user || 'root',
+    password,
+    database,
   };
 }
 

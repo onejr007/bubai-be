@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Collaborative Backend API</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        .info-box {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        .info-box h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .endpoint {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .endpoint-method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85em;
+            margin-right: 10px;
+        }
+        .get { background: #61affe; color: white; }
+        .post { background: #49cc90; color: white; }
+        .put { background: #fca130; color: white; }
+        .delete { background: #f93e3e; color: white; }
+        .endpoint-path {
+            font-family: 'Courier New', monospace;
+            color: #333;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 10px 10px 10px 0;
+            transition: background 0.3s;
+            font-weight: 500;
+        }
+        .btn:hover {
+            background: #5568d3;
+        }
+        .btn-secondary {
+            background: #764ba2;
+        }
+        .btn-secondary:hover {
+            background: #653a8b;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #10b981;
+            color: white;
+            border-radius: 20px;
+            font-size: 0.9em;
+            margin-left: 10px;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+            color: #856404;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 AI Collaborative Backend API</h1>
+        <p class="subtitle">Backend framework designed for AI Agent collaboration</p>
+        
+        <div class="warning">
+            <strong>⚠️ Important Notice:</strong> This is a static page. The actual API backend needs to be deployed to a platform that supports Node.js applications (Render, Railway, Vercel, etc.)
+        </div>
+
+        <div class="info-box">
+            <h3>📚 API Documentation</h3>
+            <p>For full API documentation with interactive testing, visit:</p>
+            <a href="https://github.com/yourusername/your-repo" class="btn" target="_blank">View Documentation</a>
+        </div>
+
+        <div class="info-box">
+            <h3>🔗 Available Endpoints</h3>
+            
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/health</span>
+                <p style="margin-top: 8px; color: #666; font-size: 0.9em;">Health check and database status</p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method get">GET</span>
+                <span class="endpoint-path">/api/v1/users</span>
+                <p style="margin-top: 8px; color: #666; font-size: 0.9em;">Get all users from Couchbase</p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method post">POST</span>
+                <span class="endpoint-path">/api/v1/users</span>
+                <p style="margin-top: 8px; color: #666; font-size: 0.9em;">Create new user</p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method put">PUT</span>
+                <span class="endpoint-path">/api/v1/users/:id</span>
+                <p style="margin-top: 8px; color: #666; font-size: 0.9em;">Update user</p>
+            </div>
+
+            <div class="endpoint">
+                <span class="endpoint-method delete">DELETE</span>
+                <span class="endpoint-path">/api/v1/users/:id</span>
+                <p style="margin-top: 8px; color: #666; font-size: 0.9em;">Delete user</p>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <h3>🛠️ Tech Stack</h3>
+            <ul style="list-style: none; padding: 0;">
+                <li style="padding: 8px 0;">✅ Node.js + TypeScript + Express</li>
+                <li style="padding: 8px 0;">✅ Couchbase Cloud Database</li>
+                <li style="padding: 8px 0;">✅ Swagger/OpenAPI Documentation</li>
+                <li style="padding: 8px 0;">✅ Module-based Architecture</li>
+                <li style="padding: 8px 0;">✅ AI Agent Collaboration Ready</li>
+            </ul>
+        </div>
+
+        <div class="info-box">
+            <h3>🚀 Deployment Options (Free)</h3>
+            <a href="https://render.com" class="btn" target="_blank">Deploy to Render</a>
+            <a href="https://railway.app" class="btn btn-secondary" target="_blank">Deploy to Railway</a>
+            <p style="margin-top: 15px; color: #666; font-size: 0.9em;">
+                Both platforms offer free tiers for Node.js applications with automatic deployments from Git.
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>Built for AI Agent Collaboration 🤖🤝🤖</p>
+            <p style="margin-top: 5px;">Framework Version 1.0.0</p>
+        </div>
+    </div>
+</body>
+</html>

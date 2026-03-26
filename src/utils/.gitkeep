@@ -1,0 +1,10 @@
+# Shared Utilities
+
+Place shared utility functions here.
+
+## Guidelines
+
+- Keep utilities generic and reusable
+- Document each utility function
+- Avoid module-specific logic
+- Use TypeScript types

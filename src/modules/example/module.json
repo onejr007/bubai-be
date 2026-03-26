@@ -1,0 +1,34 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "description": "Example module demonstrating the framework structure",
+  "author": "AI Agent",
+  "createdAt": "2026-03-26",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "description": "Get all items"
+    },
+    {
+      "method": "GET",
+      "path": "/:id",
+      "description": "Get item by ID"
+    },
+    {
+      "method": "POST",
+      "path": "/",
+      "description": "Create new item"
+    },
+    {
+      "method": "PUT",
+      "path": "/:id",
+      "description": "Update item"
+    },
+    {
+      "method": "DELETE",
+      "path": "/:id",
+      "description": "Delete item"
+    }
+  ]
+}

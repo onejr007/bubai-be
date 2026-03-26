@@ -1,0 +1,40 @@
+{
+  "name": "users",
+  "version": "1.0.0",
+  "description": "User management module with Couchbase integration",
+  "author": "Claude AI Agent",
+  "createdAt": "2026-03-26",
+  "database": "couchbase",
+  "collection": "users",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "description": "Get all users"
+    },
+    {
+      "method": "GET",
+      "path": "/:id",
+      "description": "Get user by ID"
+    },
+    {
+      "method": "POST",
+      "path": "/",
+      "description": "Create new user",
+      "body": {
+        "name": "string",
+        "email": "string"
+      }
+    },
+    {
+      "method": "PUT",
+      "path": "/:id",
+      "description": "Update user"
+    },
+    {
+      "method": "DELETE",
+      "path": "/:id",
+      "description": "Delete user"
+    }
+  ]
+}

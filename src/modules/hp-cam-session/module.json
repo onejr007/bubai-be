@@ -1,0 +1,42 @@
+{
+  "name": "hp-cam-session",
+  "version": "1.0.0",
+  "description": "HP Camera session management with temporary storage in Couchbase",
+  "author": "Claude AI Agent",
+  "createdAt": "2026-03-26",
+  "database": "couchbase",
+  "collection": "hp_cam_sessions",
+  "ttl": 300,
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/create",
+      "description": "Create new camera session"
+    },
+    {
+      "method": "POST",
+      "path": "/join",
+      "description": "Join existing session with pairing code"
+    },
+    {
+      "method": "GET",
+      "path": "/:sessionId/status",
+      "description": "Get session status"
+    },
+    {
+      "method": "POST",
+      "path": "/signal",
+      "description": "Send WebRTC signal"
+    },
+    {
+      "method": "GET",
+      "path": "/signal/:sessionId",
+      "description": "Get pending signals for device"
+    },
+    {
+      "method": "POST",
+      "path": "/end",
+      "description": "End session"
+    }
+  ]
+}

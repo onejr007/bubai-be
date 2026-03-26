@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ai-collaborative-backend
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: API_PREFIX
+        value: /api/v1
+      - key: COUCHBASE_CONNECTION_STRING
+        value: couchbases://cb.s0ukypm-djhcdpt.cloud.couchbase.com
+      - key: COUCHBASE_USERNAME
+        sync: false
+      - key: COUCHBASE_PASSWORD
+        sync: false
+      - key: COUCHBASE_BUCKET
+        value: ai-collaborative
+      - key: ALLOWED_ORIGINS
+        value: https://bub-ai.web.app,http://localhost:5173

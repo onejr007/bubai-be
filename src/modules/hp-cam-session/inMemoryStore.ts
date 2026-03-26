@@ -54,6 +54,14 @@ class InMemorySessionStore {
     this.signals.set(signal.id, signal);
   }
 
+  markSignalDelivered(signalId: string): void {
+    const signal = this.signals.get(signalId);
+    if (signal) {
+      signal.delivered = true;
+      this.signals.set(signalId, signal);
+    }
+  }
+
   getSignals(sessionId: string, forDevice: 'mobile' | 'viewer', since?: Date): WebRTCSignal[] {
     const signals: WebRTCSignal[] = [];
     

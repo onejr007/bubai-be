@@ -55,7 +55,7 @@ app.use(express.urlencoded({ extended: true }));
  *                   type: string
  *                   example: connected
  */
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
@@ -70,7 +70,7 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 }));
 
 // Swagger JSON
-app.get('/api-docs.json', (req, res) => {
+app.get('/api-docs.json', (_req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
@@ -78,10 +78,10 @@ app.get('/api-docs.json', (req, res) => {
 // Initialize Database and Start Server
 async function startServer() {
   try {
-    // Connect to Couchbase (REQUIRED - NO FALLBACK)
+    // Connect to MySQL (REQUIRED - NO FALLBACK)
     logger.info('🚀 Starting server initialization...');
     
-    logger.info('🔌 Connecting to Couchbase (REQUIRED)...');
+    logger.info('🔌 Connecting to MySQL (REQUIRED)...');
     await db.connect();
     logger.info('✅ Database connection established');
 
@@ -101,20 +101,25 @@ async function startServer() {
       logger.info(`📝 Environment: ${config.nodeEnv}`);
       logger.info(`🌐 Port: ${config.port}`);
       logger.info(`🔗 API Prefix: ${config.apiPrefix}`);
-      logger.info(`🗄️  Database: Couchbase Cloud (Connected)`);
-      logger.info(`� Swagger UI: http://localhost:${config.port}/api-docs`);
-      logger.info(`� Swagger JSON: http://localhost:${config.port}/api-docs.json`);
+      logger.info(`🗄️  Database: MySQL (Connected)`);
+      logger.info(`📚 Swagger UI: http://localhost:${config.port}/api-docs`);
+      logger.info(`📄 Swagger JSON: http://localhost:${config.port}/api-docs.json`);
       logger.info(`💚 Health Check: http://localhost:${config.port}/health`);
       logger.info('='.repeat(60));
     });
   } catch (error: any) {
     logger.error('❌ Failed to start server:', error);
-    logger.error('� CRITICAL: Couchbase connection is REQUIRED. Server cannot start without database.');
+    logger.error('💥 CRITICAL: MySQL connection is REQUIRED. Server cannot start without database.');
     logger.error('Please check:');
-    logger.error('  1. COUCHBASE_CONNECTION_STRING is correct in .env');
-    logger.error('  2. COUCHBASE_USERNAME and COUCHBASE_PASSWORD are valid');
-    logger.error('  3. Network connectivity to Couchbase Cloud');
-    logger.error('  4. Bucket exists and is accessible');
+    logger.error('  1. MySQL service is running (Railway MySQL or local MySQL)');
+    logger.error('  2. MYSQLHOST, MYSQLUSER, MYSQLPASSWORD are correct in environment variables');
+    logger.error('  3. Network connectivity to MySQL server');
+    logger.error('  4. Database exists and is accessible');
+    logger.error('');
+    logger.error('For Railway deployment:');
+    logger.error('  - Add MySQL service in Railway dashboard');
+    logger.error('  - Railway will auto-set environment variables');
+    logger.error('  - Redeploy after adding MySQL service');
     process.exit(1);
   }
 }

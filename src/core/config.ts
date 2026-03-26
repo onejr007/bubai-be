@@ -28,26 +28,38 @@ function parseMySQLConfig() {
     console.error('Action: Redeploy your service in the Railway dashboard.');
   }
 
-  // 2. Try to parse MYSQL_URL or MYSQL_PUBLIC_URL
+  // 2. Extra smart password extraction
+  let effectivePassword = password || process.env.MYSQL_ROOT_PASSWORD;
+  let effectiveUser = user || 'root';
+
   const urlToParse = mysqlUrl || publicUrl;
   if (urlToParse && urlToParse.includes('@')) {
     try {
       const url = new URL(urlToParse);
+      if (url.password) {
+        effectivePassword = decodeURIComponent(url.password);
+        console.log('🔑 Extracted password from Database URL');
+      }
+      if (url.username && url.username !== 'root') {
+        effectiveUser = url.username;
+        console.log(`👤 Extracted user from Database URL: ${effectiveUser}`);
+      }
+      
       // Valid if hostname exists
       if (url.hostname && url.hostname !== '') {
         console.log('✅ Parsed Database URL successfully');
         return {
           host: url.hostname,
           port: parseInt(url.port || '3306', 10),
-          user: url.username,
-          password: decodeURIComponent(url.password),
-          database: url.pathname.slice(1),
+          user: effectiveUser,
+          password: effectivePassword || '',
+          database: url.pathname.slice(1) || 'railway',
         };
       } else {
-        console.warn('⚠️  Database URL exists but has no hostname:', urlToParse.replace(/:[^:@/]+@/, ':***PASSWORD***@'));
+        console.warn('⚠️  Database URL exists but has no hostname. Password extracted.');
       }
     } catch (error) {
-      console.warn('⚠️  Failed to parse Database URL, falling back to individual variables');
+      console.warn('⚠️  Failed to parse Database URL for hostname');
     }
   }
 
@@ -57,17 +69,22 @@ function parseMySQLConfig() {
     return {
       host: host,
       port: parseInt(port || '3306', 10),
-      user: user || 'root',
-      password: password || '',
+      user: effectiveUser,
+      password: effectivePassword || '',
       database: database || 'railway',
     };
   }
 
   // 3.5 Try Railway Private Networking Host (default: mysql)
-  if (process.env.RAILWAY_ENVIRONMENT) {
-    console.log('🌐 Railway Environment detected. Attempting internal host: "mysql"');
-    // We don't return here yet, we'll try this but keep public proxy as another option
-    // Actually, let's prioritize private networking but allow fallback
+  if (process.env.RAILWAY_ENVIRONMENT || host === '(empty)') {
+    console.log('🌐 Railway Environment detected or missing host. Attempting internal host: "mysql"');
+    return {
+      host: 'mysql',
+      port: 3306,
+      user: effectiveUser,
+      password: effectivePassword || '',
+      database: database || 'railway',
+    };
   }
 
   // 3.6 Project-Specific Public Proxy Fallback (User provided)

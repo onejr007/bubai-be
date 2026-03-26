@@ -53,11 +53,23 @@ class HpCamSessionService {
 
     try {
       if (this.useCouchbase()) {
-        const collection = this.getSessionCollection();
-        await collection.insert(sessionId, session, {
-          expiry: this.SESSION_TTL,
-        });
-        logger.info(`📱 Session created (Couchbase): ${sessionId} with pairing code: ${pairingCode}`);
+        try {
+          const collection = this.getSessionCollection();
+          // Retry logic for transient errors
+          await this.retryOperation(async () => {
+            await collection.insert(sessionId, session, {
+              expiry: this.SESSION_TTL,
+              timeout: 10000, // 10 second timeout
+            });
+          }, 3, 'insert session');
+          
+          logger.info(`📱 Session created (Couchbase): ${sessionId} with pairing code: ${pairingCode}`);
+        } catch (dbError: any) {
+          // Fallback to in-memory if Couchbase fails
+          logger.warn(`⚠️ Couchbase insert failed, using in-memory: ${dbError.message}`);
+          inMemoryStore.saveSession(session);
+          logger.info(`📱 Session created (Memory fallback): ${sessionId} with pairing code: ${pairingCode}`);
+        }
       } else {
         inMemoryStore.saveSession(session);
         logger.info(`📱 Session created (Memory): ${sessionId} with pairing code: ${pairingCode}`);
@@ -68,6 +80,40 @@ class HpCamSessionService {
       logger.error('Failed to create session:', error);
       throw new AppError(500, 'Failed to create session');
     }
+  }
+
+  private async retryOperation<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    operationName: string = 'operation'
+  ): Promise<T> {
+    let lastError: any;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await operation();
+      } catch (error: any) {
+        lastError = error;
+        
+        // Check if error is retryable
+        const isRetryable = 
+          error.name === 'AmbiguousTimeoutError' ||
+          error.name === 'TimeoutError' ||
+          error.context?.retry_reasons?.includes('key_value_collection_outdated') ||
+          error.message?.includes('collection_outdated');
+        
+        if (!isRetryable || attempt === maxRetries) {
+          throw error;
+        }
+        
+        // Exponential backoff: 100ms, 200ms, 400ms
+        const delay = 100 * Math.pow(2, attempt - 1);
+        logger.warn(`⚠️ ${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    throw lastError;
   }
 
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
@@ -88,9 +134,12 @@ class HpCamSessionService {
           LIMIT 1
         `;
 
-        const result = await cluster.query(query, {
-          parameters: { pairingCode: input.pairingCode },
-        });
+        const result = await this.retryOperation(async () => {
+          return await cluster.query(query, {
+            parameters: { pairingCode: input.pairingCode },
+            timeout: 10000,
+          });
+        }, 3, 'query session by pairing code');
 
         if (result.rows.length === 0) {
           throw new AppError(404, 'Invalid pairing code or session expired');
@@ -101,7 +150,9 @@ class HpCamSessionService {
 
         // Update session to paired
         const collection = this.getSessionCollection();
-        existing = await collection.get(sessionId);
+        existing = await this.retryOperation(async () => {
+          return await collection.get(sessionId, { timeout: 10000 });
+        }, 3, 'get session for pairing');
       } else {
         // Use in-memory store
         const session = inMemoryStore.getSessionByPairingCode(input.pairingCode);
@@ -123,9 +174,12 @@ class HpCamSessionService {
 
       if (this.useCouchbase()) {
         const collection = this.getSessionCollection();
-        await collection.replace(sessionId, updated, {
-          expiry: this.SESSION_TTL,
-        });
+        await this.retryOperation(async () => {
+          await collection.replace(sessionId, updated, {
+            expiry: this.SESSION_TTL,
+            timeout: 10000,
+          });
+        }, 3, 'replace session');
       } else {
         inMemoryStore.updateSession(sessionId, updated);
       }
@@ -145,15 +199,20 @@ class HpCamSessionService {
 
       if (this.useCouchbase()) {
         const collection = this.getSessionCollection();
-        const result = await collection.get(sessionId);
+        const result = await this.retryOperation(async () => {
+          return await collection.get(sessionId, { timeout: 10000 });
+        }, 3, 'get session');
         session = result.content;
         
         // Update last activity
         session.lastActivity = new Date().toISOString();
         
-        await collection.replace(sessionId, session, {
-          expiry: this.SESSION_TTL,
-        });
+        await this.retryOperation(async () => {
+          await collection.replace(sessionId, session, {
+            expiry: this.SESSION_TTL,
+            timeout: 10000,
+          });
+        }, 3, 'update session activity');
       } else {
         const stored = inMemoryStore.getSession(sessionId);
         if (!stored) {
@@ -192,9 +251,12 @@ class HpCamSessionService {
     try {
       if (this.useCouchbase()) {
         const collection = this.getSignalCollection();
-        await collection.insert(signalId, signal, {
-          expiry: this.SIGNAL_TTL,
-        });
+        await this.retryOperation(async () => {
+          await collection.insert(signalId, signal, {
+            expiry: this.SIGNAL_TTL,
+            timeout: 10000,
+          });
+        }, 3, 'insert signal');
       } else {
         inMemoryStore.saveSignal(signal);
       }
@@ -286,12 +348,17 @@ class HpCamSessionService {
     try {
       if (this.useCouchbase()) {
         const collection = this.getSessionCollection();
-        const result = await collection.get(sessionId);
+        const result = await this.retryOperation(async () => {
+          return await collection.get(sessionId, { timeout: 10000 });
+        }, 2, 'get session for activity update');
         const session = result.content;
         session.lastActivity = new Date().toISOString();
-        await collection.replace(sessionId, session, {
-          expiry: this.SESSION_TTL,
-        });
+        await this.retryOperation(async () => {
+          await collection.replace(sessionId, session, {
+            expiry: this.SESSION_TTL,
+            timeout: 10000,
+          });
+        }, 2, 'update session activity timestamp');
       } else {
         const session = inMemoryStore.getSession(sessionId);
         if (session) {
@@ -308,15 +375,20 @@ class HpCamSessionService {
     try {
       if (this.useCouchbase()) {
         const collection = this.getSessionCollection();
-        const result = await collection.get(sessionId);
+        const result = await this.retryOperation(async () => {
+          return await collection.get(sessionId, { timeout: 10000 });
+        }, 3, 'get session for ending');
         const session: HpCamSession = result.content;
         
         session.status = 'ended';
         session.lastActivity = new Date().toISOString();
         
-        await collection.replace(sessionId, session, {
-          expiry: 60, // Keep for 1 minute after ending
-        });
+        await this.retryOperation(async () => {
+          await collection.replace(sessionId, session, {
+            expiry: 60, // Keep for 1 minute after ending
+            timeout: 10000,
+          });
+        }, 3, 'end session');
       } else {
         const session = inMemoryStore.getSession(sessionId);
         if (!session) {

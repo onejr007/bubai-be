@@ -15,7 +15,18 @@ const app = express();
 app.use(helmet({
   contentSecurityPolicy: false, // Allow Swagger UI
 }));
-app.use(cors({ origin: config.allowedOrigins }));
+
+// CORS - Allow Firebase hosting and localhost
+app.use(cors({ 
+  origin: [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://bub-ai.web.app',
+    'https://bub-ai.firebaseapp.com',
+  ],
+  credentials: true,
+}));
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

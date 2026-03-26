@@ -26,6 +26,10 @@ class DatabaseService {
         username: config.couchbase.username,
         password: config.couchbase.password,
         configProfile: 'wanDevelopment',
+        timeouts: {
+          kvTimeout: 10000, // 10 seconds for KV operations
+          queryTimeout: 75000, // 75 seconds for queries
+        },
       });
 
       // Timeout after 30 seconds (increased for cloud connection)
@@ -38,9 +42,9 @@ class DatabaseService {
       logger.info('✅ Cluster connected, accessing bucket...');
       this.bucket = this.cluster.bucket(config.couchbase.bucket);
       
-      // Test connection by getting a collection
-      const collection = this.bucket.scope('_default').collection('_default');
-      logger.info('✅ Collection accessible');
+      // Warmup collections to ensure metadata is loaded
+      logger.info('🔥 Warming up collections...');
+      await this.warmupCollections();
       
       this.isConnected = true;
       logger.info('✅ Couchbase connected successfully!');
@@ -49,6 +53,32 @@ class DatabaseService {
       logger.error('❌ Couchbase connection failed:', error);
       logger.error('Stack:', error.stack);
       throw new Error(`Failed to connect to Couchbase: ${error.message}`);
+    }
+  }
+
+  private async warmupCollections(): Promise<void> {
+    try {
+      // Access collections to ensure metadata is loaded
+      const collections = ['hp_cam_sessions', 'hp_cam_signals'];
+      
+      for (const collectionName of collections) {
+        try {
+          const collection = this.bucket!.scope('_default').collection(collectionName);
+          // Try a simple operation to warm up the collection
+          await collection.get('__warmup__').catch(() => {
+            // Document doesn't exist, that's fine - we just want to load metadata
+          });
+          logger.info(`✅ Collection warmed up: ${collectionName}`);
+        } catch (error: any) {
+          // Collection might not exist yet, that's okay
+          logger.info(`ℹ️  Collection ${collectionName} will be created on first use`);
+        }
+      }
+      
+      // Small delay to ensure metadata propagation
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } catch (error: any) {
+      logger.warn('⚠️ Collection warmup had issues (non-critical):', error.message);
     }
   }
 

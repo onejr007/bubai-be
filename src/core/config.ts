@@ -4,12 +4,38 @@ dotenv.config();
 
 // Parse MYSQL_URL if provided (Railway format)
 function parseMySQLConfig() {
+  // DEBUG: Print ALL environment variables
+  console.log('='.repeat(60));
+  console.log('DEBUG: ALL ENVIRONMENT VARIABLES:');
+  console.log('='.repeat(60));
+  Object.keys(process.env).sort().forEach(key => {
+    if (key.includes('MYSQL') || key.includes('DATABASE')) {
+      // Show MySQL related vars with masked password
+      const value = process.env[key];
+      if (key.includes('PASSWORD') || key.includes('PASS')) {
+        console.log(`${key}=${value ? '***MASKED***' : 'undefined'}`);
+      } else {
+        console.log(`${key}=${value}`);
+      }
+    }
+  });
+  console.log('='.repeat(60));
+  
   const mysqlUrl = process.env.MYSQL_URL;
   
   if (mysqlUrl) {
+    // Log actual value for debugging
+    console.log('DEBUG: MYSQL_URL value:', mysqlUrl);
+    
     try {
       // Parse mysql://user:password@host:port/database
       const url = new URL(mysqlUrl);
+      console.log('DEBUG: Parsed successfully:', {
+        host: url.hostname,
+        port: url.port,
+        user: url.username,
+        database: url.pathname.slice(1),
+      });
       return {
         host: url.hostname,
         port: parseInt(url.port || '3306', 10),
@@ -18,11 +44,13 @@ function parseMySQLConfig() {
         database: url.pathname.slice(1), // Remove leading /
       };
     } catch (error) {
-      console.warn('Failed to parse MYSQL_URL, falling back to individual variables');
+      console.warn('Failed to parse MYSQL_URL:', error);
+      console.warn('MYSQL_URL value was:', mysqlUrl);
     }
   }
   
   // Fallback to individual environment variables
+  console.log('DEBUG: Using individual variables');
   return {
     host: process.env.MYSQLHOST || 'localhost',
     port: parseInt(process.env.MYSQLPORT || '3306', 10),

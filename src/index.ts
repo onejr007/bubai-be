@@ -78,18 +78,12 @@ app.get('/api-docs.json', (req, res) => {
 // Initialize Database and Start Server
 async function startServer() {
   try {
-    // Connect to Couchbase (OPTIONAL - fallback to in-memory)
+    // Connect to Couchbase (REQUIRED - NO FALLBACK)
     logger.info('🚀 Starting server initialization...');
     
-    try {
-      await db.connect();
-      logger.info('✅ Database connection established');
-    } catch (dbError: any) {
-      logger.warn('⚠️ Database connection failed - using in-memory storage');
-      logger.warn('Error:', dbError.message);
-      logger.info('💾 Server will use in-memory storage as fallback');
-      // Continue without database - services will use in-memory fallback
-    }
+    logger.info('🔌 Connecting to Couchbase (REQUIRED)...');
+    await db.connect();
+    logger.info('✅ Database connection established');
 
     // Load all modules dynamically
     logger.info('📦 Loading modules...');
@@ -107,14 +101,20 @@ async function startServer() {
       logger.info(`📝 Environment: ${config.nodeEnv}`);
       logger.info(`🌐 Port: ${config.port}`);
       logger.info(`🔗 API Prefix: ${config.apiPrefix}`);
-      logger.info(`🗄️  Database: ${db.isReady() ? 'Couchbase (Connected)' : 'In-Memory (Fallback)'}`);
-      logger.info(`📚 Swagger UI: http://localhost:${config.port}/api-docs`);
-      logger.info(`📄 Swagger JSON: http://localhost:${config.port}/api-docs.json`);
+      logger.info(`🗄️  Database: Couchbase Cloud (Connected)`);
+      logger.info(`� Swagger UI: http://localhost:${config.port}/api-docs`);
+      logger.info(`� Swagger JSON: http://localhost:${config.port}/api-docs.json`);
       logger.info(`💚 Health Check: http://localhost:${config.port}/health`);
       logger.info('='.repeat(60));
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('❌ Failed to start server:', error);
+    logger.error('� CRITICAL: Couchbase connection is REQUIRED. Server cannot start without database.');
+    logger.error('Please check:');
+    logger.error('  1. COUCHBASE_CONNECTION_STRING is correct in .env');
+    logger.error('  2. COUCHBASE_USERNAME and COUCHBASE_PASSWORD are valid');
+    logger.error('  3. Network connectivity to Couchbase Cloud');
+    logger.error('  4. Bucket exists and is accessible');
     process.exit(1);
   }
 }

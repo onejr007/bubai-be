@@ -58,25 +58,57 @@ class DatabaseService {
 
   private async warmupCollections(): Promise<void> {
     try {
-      // Access collections to ensure metadata is loaded
-      const collections = ['hp_cam_sessions', 'hp_cam_signals'];
+      logger.info('🔥 Starting collection warmup...');
       
+      const collections = ['hp_cam_sessions', 'hp_cam_signals'];
+      const cluster = this.cluster!;
+      const bucketName = this.bucket!.name;
+      
+      // Create primary indexes to ensure collections are queryable
       for (const collectionName of collections) {
         try {
-          const collection = this.bucket!.scope('_default').collection(collectionName);
-          // Try a simple operation to warm up the collection
-          await collection.get('__warmup__').catch(() => {
-            // Document doesn't exist, that's fine - we just want to load metadata
-          });
-          logger.info(`✅ Collection warmed up: ${collectionName}`);
+          const indexQuery = `
+            CREATE PRIMARY INDEX IF NOT EXISTS ON \`${bucketName}\`._default.${collectionName}
+          `;
+          await cluster.query(indexQuery, { timeout: 30000 });
+          logger.info(`✅ Primary index ensured for: ${collectionName}`);
         } catch (error: any) {
-          // Collection might not exist yet, that's okay
-          logger.info(`ℹ️  Collection ${collectionName} will be created on first use`);
+          // Index might already exist or creation not supported
+          logger.info(`ℹ️  Index check for ${collectionName}: ${error.message}`);
         }
       }
       
-      // Small delay to ensure metadata propagation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Wait for metadata propagation (critical for cloud)
+      logger.info('⏳ Waiting for metadata propagation (5 seconds)...');
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Verify collections are accessible
+      for (const collectionName of collections) {
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            const collection = this.bucket!.scope('_default').collection(collectionName);
+            // Try a simple upsert operation to ensure collection is writable
+            await collection.upsert('__warmup_test__', { test: true }, { 
+              timeout: 10000,
+              expiry: 10 
+            });
+            await collection.remove('__warmup_test__').catch(() => {});
+            logger.info(`✅ Collection ready: ${collectionName}`);
+            break;
+          } catch (error: any) {
+            retries--;
+            if (retries === 0) {
+              logger.warn(`⚠️ Collection ${collectionName} not ready after warmup: ${error.message}`);
+            } else {
+              logger.info(`ℹ️  Retrying warmup for ${collectionName} (${retries} left)...`);
+              await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+          }
+        }
+      }
+      
+      logger.info('✅ Collection warmup completed');
     } catch (error: any) {
       logger.warn('⚠️ Collection warmup had issues (non-critical):', error.message);
     }

@@ -8,6 +8,18 @@ Error `UnambiguousTimeoutError` dan `AmbiguousTimeoutError` dengan retry reason 
 3. Latency jaringan ke Couchbase Cloud
 4. Timeout default terlalu pendek untuk operasi cloud
 
+## PENTING: NO FALLBACK POLICY
+
+**Aplikasi ini TIDAK menggunakan in-memory fallback.** Semua data HARUS disimpan di Couchbase Cloud. Jika Couchbase tidak tersedia:
+- Server TIDAK akan start
+- Semua operasi akan throw error 503 (Service Unavailable)
+- Tidak ada data yang disimpan di memory
+
+Ini memastikan:
+- Data consistency dan persistence
+- Tidak ada data loss saat restart
+- Production-ready architecture
+
 ## Solusi yang Diterapkan
 
 ### 1. Retry Logic dengan Exponential Backoff (Enhanced)
@@ -32,17 +44,17 @@ Menambahkan `warmupCollections()` di `database.ts` yang:
 - Menunggu 5 detik untuk propagasi metadata
 - Cleanup test document setelah warmup
 
-### 4. Graceful Fallback (Multi-Level)
-Sistem memiliki fallback berlapis:
-- Level 1: Retry dengan exponential backoff
-- Level 2: Fallback ke in-memory store jika Couchbase gagal
-- Level 3: Session tetap bisa dibuat dan aplikasi tidak crash
-- Log warning untuk monitoring
+### 4. Strict Database Requirement
+- Server TIDAK akan start jika Couchbase tidak terkoneksi
+- Semua operasi memiliki check `if (!this.useCouchbase())` yang throw error 503
+- Tidak ada in-memory fallback
+- Clear error messages untuk troubleshooting
 
 ### 5. Enhanced Error Handling
-- `getSessionStatus()` sekarang memiliki try-catch untuk fallback ke in-memory
-- Semua operasi critical memiliki retry logic
-- Error logging yang lebih detail untuk debugging
+- Semua operasi throw descriptive errors jika gagal
+- Error logging yang detail untuk debugging
+- HTTP 503 untuk database unavailable
+- HTTP 500 untuk operation failures
 
 ## File yang Dimodifikasi
 
@@ -56,8 +68,14 @@ Sistem memiliki fallback berlapis:
    - Enhanced `retryOperation()` dengan delay yang lebih panjang
    - Menangani `UnambiguousTimeoutError`
    - Memeriksa `error.cause.retry_reasons`
-   - Fallback ke in-memory di `getSessionStatus()`
+   - Removed ALL in-memory fallback code
+   - Added database availability checks di semua methods
    - Timeout 10 detik untuk semua operasi
+
+3. `BE/src/index.ts`
+   - Removed fallback logic di startServer()
+   - Server akan exit(1) jika Couchbase gagal connect
+   - Clear error messages untuk troubleshooting
 
 ## Root Cause
 Masalah utama adalah:
@@ -67,44 +85,83 @@ Masalah utama adalah:
 4. Tidak ada retry mechanism untuk transient errors
 
 ## Testing
-Setelah deploy, test dengan:
-1. Tunggu hingga warmup selesai (lihat log "✅ Collection warmup completed")
-2. Create session - harus berhasil tanpa timeout
-3. Get session status - harus bisa retrieve session
-4. Join session - harus bisa pair dengan pairing code
-5. Send signal - harus bisa kirim WebRTC signal
+Setelah deploy:
+1. Server HARUS berhasil connect ke Couchbase atau akan exit
+2. Tunggu hingga warmup selesai (lihat log "✅ Collection warmup completed")
+3. Create session - harus berhasil tanpa timeout
+4. Get session status - harus bisa retrieve session
+5. Join session - harus bisa pair dengan pairing code
+6. Send signal - harus bisa kirim WebRTC signal
 
 ## Monitoring
 Perhatikan log untuk:
 - `✅ Primary index ensured for: [collection]` - index berhasil dibuat
 - `✅ Collection ready: [name]` - collection siap digunakan
 - `⚠️ [operation] failed (attempt X/3), retrying...` - retry sedang terjadi
-- `⚠️ Couchbase [operation] failed, using in-memory` - fallback ke memory
 - `❌ Collection metadata not ready after 3 attempts` - collection issue serius
+- `💥 CRITICAL: Couchbase connection is REQUIRED` - server tidak bisa start
 
-## Jika Masih Error
-Jika masih terjadi timeout setelah perbaikan ini:
+## Jika Server Tidak Start
 
-1. Periksa Couchbase Console:
-   - Pastikan bucket exists dan accessible
-   - Periksa apakah ada primary index di collections
-   - Cek network connectivity dari server ke Couchbase Cloud
+Server akan exit dengan error jika Couchbase tidak tersedia. Check:
 
-2. Increase timeout lebih lanjut:
-   ```typescript
-   // Di database.ts, ubah timeout menjadi:
-   kvTimeout: 20000, // 20 seconds
+1. **Environment Variables:**
+   ```bash
+   COUCHBASE_CONNECTION_STRING=couchbases://...
+   COUCHBASE_USERNAME=your_username
+   COUCHBASE_PASSWORD=your_password
+   COUCHBASE_BUCKET=your_bucket
    ```
 
-3. Manual create primary index via Couchbase Console:
+2. **Network Connectivity:**
+   ```bash
+   ping svc-dqis-node-001.s0ukypm-djhcdpt.cloud.couchbase.com
+   ```
+
+3. **Couchbase Console:**
+   - Verify bucket exists
+   - Check user permissions
+   - Ensure cluster is running
+
+4. **Manual Index Creation (if needed):**
    ```sql
    CREATE PRIMARY INDEX ON `bucket_name`._default.hp_cam_sessions;
    CREATE PRIMARY INDEX ON `bucket_name`._default.hp_cam_signals;
    ```
 
-4. Gunakan in-memory mode sementara:
-   - Comment out Couchbase connection di `.env`
-   - Sistem akan otomatis fallback ke in-memory
+## Jika Masih Error Setelah Start
+
+Jika server berhasil start tapi operasi masih timeout:
+
+1. **Increase timeout lebih lanjut:**
+   ```typescript
+   // Di database.ts, ubah timeout menjadi:
+   kvTimeout: 20000, // 20 seconds
+   ```
+
+2. **Check Couchbase Performance:**
+   - Monitor di Couchbase Console
+   - Check for high latency
+   - Verify cluster health
+
+3. **Increase retry attempts:**
+   ```typescript
+   // Di service.ts, ubah maxRetries:
+   await this.retryOperation(async () => {
+     // operation
+   }, 5, 'operation name'); // dari 3 ke 5
+   ```
+
+## Production Checklist
+
+Sebelum deploy ke production:
+- ✅ Couchbase credentials valid
+- ✅ Network connectivity tested
+- ✅ Primary indexes created
+- ✅ Warmup completes successfully
+- ✅ Test all CRUD operations
+- ✅ Monitor logs for errors
+- ✅ Setup alerts for database unavailability
 
 ## Referensi
 - Couchbase SDK Timeout: https://docs.couchbase.com/nodejs-sdk/current/howtos/managing-connections.html

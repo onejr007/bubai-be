@@ -3,30 +3,10 @@ import { AppError } from '@/core/middleware/errorHandler';
 import { logger } from '@/core/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { HpCamSession, WebRTCSignal, CreateSessionInput, JoinSessionInput, SendSignalInput } from './types';
+import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 class HpCamSessionService {
-  private sessionCollection = 'hp_cam_sessions';
-  private signalCollection = 'hp_cam_signals';
   private SESSION_TTL = 300; // 5 minutes in seconds
-  private SIGNAL_TTL = 60; // 1 minute in seconds
-
-  private useCouchbase(): boolean {
-    return db.isReady();
-  }
-
-  private getSessionCollection() {
-    if (!db.isReady()) {
-      throw new AppError(503, 'Database not connected');
-    }
-    return db.getCollection('_default', this.sessionCollection);
-  }
-
-  private getSignalCollection() {
-    if (!db.isReady()) {
-      throw new AppError(503, 'Database not connected');
-    }
-    return db.getCollection('_default', this.signalCollection);
-  }
 
   private generatePairingCode(): string {
     // Generate 6-digit pairing code
@@ -34,11 +14,6 @@ class HpCamSessionService {
   }
 
   async createSession(input: CreateSessionInput): Promise<HpCamSession> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     const sessionId = uuidv4();
     const pairingCode = this.generatePairingCode();
     const now = new Date();
@@ -56,119 +31,68 @@ class HpCamSessionService {
     };
 
     try {
-      const collection = this.getSessionCollection();
-      // Retry logic for transient errors
-      await this.retryOperation(async () => {
-        await collection.insert(sessionId, session, {
-          expiry: this.SESSION_TTL,
-          timeout: 10000, // 10 second timeout
-        });
-      }, 3, 'insert session');
-      
-      logger.info(`📱 Session created (Couchbase): ${sessionId} with pairing code: ${pairingCode}`);
+      await db.query(
+        `INSERT INTO hp_cam_sessions 
+        (session_id, pairing_code, device_id, status, has_viewer, created_at, expires_at, last_activity) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          sessionId,
+          pairingCode,
+          input.deviceId,
+          'waiting',
+          false,
+          now,
+          expiresAt,
+          now,
+        ]
+      );
+
+      logger.info(`📱 Session created (MySQL): ${sessionId} with pairing code: ${pairingCode}`);
       return session;
     } catch (error: any) {
-      logger.error('Failed to create session in Couchbase:', error);
+      logger.error('Failed to create session in MySQL:', error);
       throw new AppError(500, `Failed to create session: ${error.message}`);
     }
   }
 
-  private async retryOperation<T>(
-    operation: () => Promise<T>,
-    maxRetries: number = 3,
-    operationName: string = 'operation'
-  ): Promise<T> {
-    let lastError: any;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        return await operation();
-      } catch (error: any) {
-        lastError = error;
-        
-        // Check if error is retryable
-        const isRetryable = 
-          error.name === 'AmbiguousTimeoutError' ||
-          error.name === 'UnambiguousTimeoutError' ||
-          error.name === 'TimeoutError' ||
-          error.context?.retry_reasons?.includes('key_value_collection_outdated') ||
-          error.cause?.retry_reasons?.includes('key_value_collection_outdated') ||
-          error.message?.includes('collection_outdated') ||
-          error.message?.includes('timeout');
-        
-        if (!isRetryable || attempt === maxRetries) {
-          // If all retries failed due to collection issues, throw a more helpful error
-          if (error.context?.retry_reasons?.includes('key_value_collection_outdated') ||
-              error.cause?.retry_reasons?.includes('key_value_collection_outdated')) {
-            logger.error(`❌ Collection metadata not ready after ${maxRetries} attempts. This may indicate collection doesn't exist.`);
-          }
-          throw error;
-        }
-        
-        // Exponential backoff: 200ms, 500ms, 1000ms (increased delays)
-        const delay = 200 * Math.pow(2, attempt - 1);
-        logger.warn(`⚠️ ${operationName} failed (attempt ${attempt}/${maxRetries}), retrying in ${delay}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    throw lastError;
-  }
-
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     try {
-      // Find session by pairing code in Couchbase
-      const cluster = db.getCluster();
-      const bucketName = db.getBucket().name;
-      
-      const query = `
-        SELECT META().id, sessions.*
-        FROM \`${bucketName}\`._default.${this.sessionCollection} AS sessions
-        WHERE sessions.pairingCode = $pairingCode
-        AND sessions.status = 'waiting'
-        LIMIT 1
-      `;
+      // Find session by pairing code
+      const rows = await db.query<RowDataPacket[]>(
+        `SELECT * FROM hp_cam_sessions 
+        WHERE pairing_code = ? AND status = 'waiting' AND expires_at > NOW() 
+        LIMIT 1`,
+        [input.pairingCode]
+      );
 
-      const result = await this.retryOperation(async () => {
-        return await cluster.query(query, {
-          parameters: { pairingCode: input.pairingCode },
-          timeout: 10000,
-        });
-      }, 3, 'query session by pairing code');
-
-      if (result.rows.length === 0) {
+      if (rows.length === 0) {
         throw new AppError(404, 'Invalid pairing code or session expired');
       }
 
-      const sessionData = result.rows[0];
-      const sessionId = sessionData.id;
+      const sessionData = rows[0];
+      const sessionId = sessionData.session_id;
+      const pairedAt = new Date();
 
       // Update session to paired
-      const collection = this.getSessionCollection();
-      const existing = await this.retryOperation(async () => {
-        return await collection.get(sessionId, { timeout: 10000 });
-      }, 3, 'get session for pairing');
-      
+      await db.query(
+        `UPDATE hp_cam_sessions 
+        SET status = 'paired', has_viewer = TRUE, viewer_device_id = ?, paired_at = ?, last_activity = ? 
+        WHERE session_id = ?`,
+        [input.deviceId, pairedAt, pairedAt, sessionId]
+      );
+
       const updated: HpCamSession = {
-        ...existing.content,
+        sessionId,
+        pairingCode: sessionData.pairing_code,
+        deviceId: sessionData.device_id,
         status: 'paired',
         hasViewer: true,
         viewerDeviceId: input.deviceId,
-        pairedAt: new Date().toISOString(),
-        lastActivity: new Date().toISOString(),
+        createdAt: sessionData.created_at,
+        expiresAt: sessionData.expires_at,
+        pairedAt: pairedAt.toISOString(),
+        lastActivity: pairedAt.toISOString(),
       };
-
-      await this.retryOperation(async () => {
-        await collection.replace(sessionId, updated, {
-          expiry: this.SESSION_TTL,
-          timeout: 10000,
-        });
-      }, 3, 'replace session');
 
       logger.info(`🔗 Session paired: ${sessionId}`);
       return updated;
@@ -180,46 +104,44 @@ class HpCamSessionService {
   }
 
   async getSessionStatus(sessionId: string): Promise<HpCamSession> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     try {
-      const collection = this.getSessionCollection();
-      const result = await this.retryOperation(async () => {
-        return await collection.get(sessionId, { timeout: 10000 });
-      }, 3, 'get session');
-      
-      const session: HpCamSession = result.content;
-      
-      // Update last activity
-      session.lastActivity = new Date().toISOString();
-      
-      await this.retryOperation(async () => {
-        await collection.replace(sessionId, session, {
-          expiry: this.SESSION_TTL,
-          timeout: 10000,
-        });
-      }, 3, 'update session activity');
+      const rows = await db.query<RowDataPacket[]>(
+        `SELECT * FROM hp_cam_sessions WHERE session_id = ? AND expires_at > NOW()`,
+        [sessionId]
+      );
 
-      return session;
-    } catch (error: any) {
-      if (error instanceof AppError) throw error;
-      if (error.message?.includes('document not found')) {
+      if (rows.length === 0) {
         throw new AppError(404, 'Session not found or expired');
       }
+
+      const session = rows[0];
+
+      // Update last activity
+      await db.query(
+        `UPDATE hp_cam_sessions SET last_activity = NOW() WHERE session_id = ?`,
+        [sessionId]
+      );
+
+      return {
+        sessionId: session.session_id,
+        pairingCode: session.pairing_code,
+        deviceId: session.device_id,
+        status: session.status,
+        hasViewer: session.has_viewer,
+        viewerDeviceId: session.viewer_device_id,
+        createdAt: session.created_at,
+        expiresAt: session.expires_at,
+        pairedAt: session.paired_at,
+        lastActivity: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      if (error instanceof AppError) throw error;
       logger.error('Failed to get session status:', error);
       throw new AppError(500, `Failed to get session status: ${error.message}`);
     }
   }
 
   async sendSignal(input: SendSignalInput): Promise<void> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     const signalId = uuidv4();
     const signal: WebRTCSignal = {
       id: signalId,
@@ -233,16 +155,27 @@ class HpCamSessionService {
     };
 
     try {
-      const collection = this.getSignalCollection();
-      await this.retryOperation(async () => {
-        await collection.insert(signalId, signal, {
-          expiry: this.SIGNAL_TTL,
-          timeout: 10000,
-        });
-      }, 3, 'insert signal');
+      await db.query(
+        `INSERT INTO hp_cam_signals 
+        (id, session_id, type, from_device, to_device, data, timestamp, delivered) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          signalId,
+          signal.sessionId,
+          signal.type,
+          signal.from,
+          signal.to,
+          JSON.stringify(signal.data),
+          new Date(),
+          false,
+        ]
+      );
 
       // Update session last activity
-      await this.updateSessionActivity(input.sessionId);
+      await db.query(
+        `UPDATE hp_cam_sessions SET last_activity = NOW() WHERE session_id = ?`,
+        [input.sessionId]
+      );
     } catch (error: any) {
       logger.error('Failed to send signal:', error);
       throw new AppError(500, `Failed to send signal: ${error.message}`);
@@ -250,124 +183,63 @@ class HpCamSessionService {
   }
 
   async getSignals(sessionId: string, forDevice: 'mobile' | 'viewer', since?: Date): Promise<WebRTCSignal[]> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     try {
-      const cluster = db.getCluster();
-      const bucketName = db.getBucket().name;
-      
       let query = `
-        SELECT signals.*
-        FROM \`${bucketName}\`._default.${this.signalCollection} AS signals
-        WHERE signals.sessionId = $sessionId
-        AND signals.to = $forDevice
-        AND signals.delivered = false
+        SELECT * FROM hp_cam_signals 
+        WHERE session_id = ? AND to_device = ? AND delivered = FALSE
       `;
-
-      const parameters: any = {
-        sessionId,
-        forDevice,
-      };
+      const params: any[] = [sessionId, forDevice];
 
       if (since) {
-        query += ` AND signals.timestamp > $since`;
-        parameters.since = since.toISOString();
+        query += ` AND timestamp > ?`;
+        params.push(since);
       }
 
-      query += ` ORDER BY signals.timestamp ASC`;
+      query += ` ORDER BY timestamp ASC`;
 
-      const result = await cluster.query(query, { parameters });
-      const signals: WebRTCSignal[] = result.rows;
+      const rows = await db.query<RowDataPacket[]>(query, params);
+
+      const signals: WebRTCSignal[] = rows.map((row) => ({
+        id: row.id,
+        sessionId: row.session_id,
+        type: row.type,
+        from: row.from_device,
+        to: row.to_device,
+        data: typeof row.data === 'string' ? JSON.parse(row.data) : row.data,
+        timestamp: row.timestamp,
+        delivered: row.delivered,
+      }));
 
       // Mark signals as delivered
-      await this.markSignalsDelivered(signals.map(s => s.id));
+      if (signals.length > 0) {
+        const signalIds = signals.map((s) => s.id);
+        await db.query(
+          `UPDATE hp_cam_signals SET delivered = TRUE WHERE id IN (${signalIds.map(() => '?').join(',')})`,
+          signalIds
+        );
+      }
 
       return signals;
     } catch (error: any) {
-      // If collection doesn't exist, return empty array
-      if (error.message?.includes('not found')) {
-        return [];
-      }
       logger.error('Failed to get signals:', error);
       throw new AppError(500, `Failed to get signals: ${error.message}`);
     }
   }
 
-  private async markSignalsDelivered(signalIds: string[]): Promise<void> {
-    if (signalIds.length === 0) return;
-
-    try {
-      const collection = this.getSignalCollection();
-      
-      for (const signalId of signalIds) {
-        try {
-          const result = await collection.get(signalId, { timeout: 5000 });
-          const signal = result.content;
-          signal.delivered = true;
-          await collection.replace(signalId, signal, {
-            expiry: this.SIGNAL_TTL,
-            timeout: 5000,
-          });
-        } catch (error) {
-          // Ignore if signal already expired
-        }
-      }
-    } catch (error) {
-      // Ignore errors in marking delivered
-    }
-  }
-
-  private async updateSessionActivity(sessionId: string): Promise<void> {
-    try {
-      const collection = this.getSessionCollection();
-      const result = await this.retryOperation(async () => {
-        return await collection.get(sessionId, { timeout: 10000 });
-      }, 2, 'get session for activity update');
-      const session = result.content;
-      session.lastActivity = new Date().toISOString();
-      await this.retryOperation(async () => {
-        await collection.replace(sessionId, session, {
-          expiry: this.SESSION_TTL,
-          timeout: 10000,
-        });
-      }, 2, 'update session activity timestamp');
-    } catch (error) {
-      // Ignore if session expired
-    }
-  }
-
   async endSession(sessionId: string): Promise<void> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     try {
-      const collection = this.getSessionCollection();
-      const result = await this.retryOperation(async () => {
-        return await collection.get(sessionId, { timeout: 10000 });
-      }, 3, 'get session for ending');
-      const session: HpCamSession = result.content;
-      
-      session.status = 'ended';
-      session.lastActivity = new Date().toISOString();
-      
-      await this.retryOperation(async () => {
-        await collection.replace(sessionId, session, {
-          expiry: 60, // Keep for 1 minute after ending
-          timeout: 10000,
-        });
-      }, 3, 'end session');
-      
+      const result = await db.query<ResultSetHeader>(
+        `UPDATE hp_cam_sessions SET status = 'ended', last_activity = NOW() WHERE session_id = ?`,
+        [sessionId]
+      );
+
+      if (result.affectedRows === 0) {
+        throw new AppError(404, 'Session not found');
+      }
+
       logger.info(`🔚 Session ended: ${sessionId}`);
     } catch (error: any) {
       if (error instanceof AppError) throw error;
-      if (error.message?.includes('document not found')) {
-        throw new AppError(404, 'Session not found');
-      }
       logger.error('Failed to end session:', error);
       throw new AppError(500, `Failed to end session: ${error.message}`);
     }
@@ -375,27 +247,12 @@ class HpCamSessionService {
 
   // Cleanup expired sessions (can be called by cron job)
   async cleanupExpiredSessions(): Promise<number> {
-    // Ensure Couchbase is connected
-    if (!this.useCouchbase()) {
-      throw new AppError(503, 'Database not connected. Couchbase is required.');
-    }
-
     try {
-      const cluster = db.getCluster();
-      const bucketName = db.getBucket().name;
-      const now = new Date().toISOString();
-      
-      const query = `
-        DELETE FROM \`${bucketName}\`._default.${this.sessionCollection}
-        WHERE expiresAt < $now
-      `;
+      const result = await db.query<ResultSetHeader>(
+        `DELETE FROM hp_cam_sessions WHERE expires_at < NOW()`
+      );
 
-      const result = await cluster.query(query, {
-        parameters: { now },
-        timeout: 30000,
-      });
-
-      return result.meta.metrics?.mutationCount || 0;
+      return result.affectedRows || 0;
     } catch (error: any) {
       logger.error('Failed to cleanup expired sessions:', error);
       return 0;
@@ -404,10 +261,10 @@ class HpCamSessionService {
 
   // Get storage stats
   getStats() {
-    return { 
-      storage: this.useCouchbase() ? 'couchbase' : 'memory', 
+    return {
+      storage: 'mysql',
       connected: db.isReady(),
-      bucket: db.isReady() ? db.getBucket().name : 'N/A'
+      database: 'MySQL Railway',
     };
   }
 }

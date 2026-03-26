@@ -12,10 +12,11 @@ export const config = {
     'https://bub-ai.web.app',
     'https://bub-ai.firebaseapp.com',
   ],
-  couchbase: {
-    connectionString: process.env.COUCHBASE_CONNECTION_STRING || '',
-    username: process.env.COUCHBASE_USERNAME || '',
-    password: process.env.COUCHBASE_PASSWORD || '',
-    bucket: process.env.COUCHBASE_BUCKET || '',
+  mysql: {
+    host: process.env.MYSQLHOST || 'localhost',
+    port: parseInt(process.env.MYSQLPORT || '3306', 10),
+    user: process.env.MYSQLUSER || 'root',
+    password: process.env.MYSQLPASSWORD || '',
+    database: process.env.MYSQLDATABASE || 'bubai',
   },
 } as const;

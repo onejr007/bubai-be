@@ -1,5 +1,37 @@
 # Couchbase Troubleshooting Quick Guide
 
+## PENTING: NO FALLBACK POLICY
+
+Aplikasi ini TIDAK menggunakan in-memory fallback. Couchbase Cloud adalah SATU-SATUNYA storage.
+
+**Jika Couchbase tidak tersedia:**
+- ❌ Server TIDAK akan start
+- ❌ Semua operasi akan gagal dengan error 503
+- ❌ Tidak ada data yang disimpan di memory
+
+## Error: Server Won't Start
+
+### Penyebab
+Couchbase connection gagal saat startup.
+
+### Solusi
+1. Check environment variables di `.env`:
+   ```env
+   COUCHBASE_CONNECTION_STRING=couchbases://cb.xxx.cloud.couchbase.com
+   COUCHBASE_USERNAME=your_username
+   COUCHBASE_PASSWORD=your_password
+   COUCHBASE_BUCKET=your_bucket
+   ```
+
+2. Test connectivity:
+   ```bash
+   ping svc-dqis-node-001.s0ukypm-djhcdpt.cloud.couchbase.com
+   ```
+
+3. Verify credentials di Couchbase Console
+
+4. Check bucket exists dan accessible
+
 ## Error: key_value_collection_outdated
 
 ### Penyebab
@@ -38,22 +70,15 @@ timeouts: {
 ping svc-dqis-node-001.s0ukypm-djhcdpt.cloud.couchbase.com
 ```
 
-## Fallback ke In-Memory
+## Error: 503 Service Unavailable
 
-### Temporary Disable Couchbase
-Di `.env`, comment out:
-```env
-# COUCHBASE_CONNECTION_STRING=...
-# COUCHBASE_USERNAME=...
-# COUCHBASE_PASSWORD=...
-```
+### Penyebab
+Database tidak terkoneksi saat operasi dipanggil.
 
-Aplikasi akan otomatis gunakan in-memory store.
-
-### Re-enable Couchbase
-1. Uncomment credentials di `.env`
-2. Restart aplikasi
-3. Tunggu warmup selesai
+### Solusi
+1. Restart server untuk reconnect ke Couchbase
+2. Check Couchbase cluster status
+3. Verify network tidak terputus
 
 ## Monitoring Logs
 
@@ -63,13 +88,13 @@ Aplikasi akan otomatis gunakan in-memory store.
 ✅ Primary index ensured for: hp_cam_sessions
 ✅ Collection ready: hp_cam_sessions
 ✅ Collection warmup completed
+🚀 Server running successfully!
 📱 Session created (Couchbase): [id]
 ```
 
 ### Warning Signs ⚠️
 ```
 ⚠️ get session failed (attempt 1/3), retrying...
-⚠️ Couchbase insert failed, using in-memory
 ⚠️ Collection hp_cam_sessions not ready after warmup
 ```
 
@@ -77,6 +102,7 @@ Aplikasi akan otomatis gunakan in-memory store.
 ```
 ❌ Couchbase connection failed
 ❌ Collection metadata not ready after 3 attempts
+💥 CRITICAL: Couchbase connection is REQUIRED
 error: UnambiguousTimeoutError
 ```
 
@@ -101,6 +127,31 @@ await this.retryOperation(async () => {
 
 Test Couchbase connection:
 ```bash
+curl http://localhost:3000/health
+```
+
+Response jika OK:
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-26T...",
+  "database": "connected"
+}
+```
+
+Response jika ERROR:
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-26T...",
+  "database": "disconnected"
+}
+```
+
+## Stats Endpoint
+
+Check storage info:
+```bash
 curl http://localhost:3000/api/hp-cam-session/stats
 ```
 
@@ -124,11 +175,36 @@ Response:
 ### Issue: Retry loop tidak berhenti
 **Solution**: Check error type di log, mungkin bukan retryable error.
 
-### Issue: In-memory fallback terus terjadi
-**Solution**: Couchbase credentials salah atau network issue.
+### Issue: Server crashes on startup
+**Solution**: Couchbase credentials salah atau network issue. Fix credentials dan restart.
 
-### Issue: Session hilang setelah restart
-**Solution**: Normal jika pakai in-memory. Pastikan Couchbase connected.
+### Issue: Operations return 503
+**Solution**: Database connection lost. Restart server untuk reconnect.
+
+## Production Deployment Checklist
+
+Sebelum deploy:
+- [ ] Couchbase credentials di environment variables
+- [ ] Test connection dari server ke Couchbase Cloud
+- [ ] Primary indexes sudah dibuat
+- [ ] Warmup berhasil di staging
+- [ ] Health check endpoint accessible
+- [ ] Monitoring/alerting setup untuk database unavailability
+- [ ] Backup strategy untuk Couchbase data
+
+## Emergency Procedures
+
+### Database Down
+1. Check Couchbase Cloud status
+2. Verify network connectivity
+3. Check credentials masih valid
+4. Contact Couchbase support jika cluster issue
+
+### High Latency
+1. Check network latency ke Couchbase Cloud
+2. Consider increasing timeouts
+3. Monitor Couchbase cluster performance
+4. Consider upgrading Couchbase plan
 
 ## Contact Support
 
@@ -136,4 +212,5 @@ Jika masalah persist:
 1. Collect logs (last 100 lines)
 2. Check Couchbase Console untuk errors
 3. Verify bucket permissions
-4. Contact Couchbase support dengan error details
+4. Test connection dengan couchbase CLI
+5. Contact Couchbase support dengan error details

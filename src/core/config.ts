@@ -6,7 +6,12 @@ export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   apiPrefix: process.env.API_PREFIX || '/api/v1',
-  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
+  allowedOrigins: process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'https://bub-ai.web.app',
+    'https://bub-ai.firebaseapp.com',
+  ],
   couchbase: {
     connectionString: process.env.COUCHBASE_CONNECTION_STRING || '',
     username: process.env.COUCHBASE_USERNAME || '',

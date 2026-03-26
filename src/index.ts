@@ -67,17 +67,17 @@ app.get('/api-docs.json', (req, res) => {
 // Initialize Database and Start Server
 async function startServer() {
   try {
-    // Connect to Couchbase (REQUIRED)
+    // Connect to Couchbase (OPTIONAL - fallback to in-memory)
     logger.info('🚀 Starting server initialization...');
     
     try {
       await db.connect();
       logger.info('✅ Database connection established');
     } catch (dbError: any) {
-      logger.error('❌ CRITICAL: Database connection failed!');
-      logger.error('Error:', dbError.message);
-      logger.error('⚠️ Server cannot start without database connection');
-      process.exit(1); // Exit if database connection fails
+      logger.warn('⚠️ Database connection failed - using in-memory storage');
+      logger.warn('Error:', dbError.message);
+      logger.info('💾 Server will use in-memory storage as fallback');
+      // Continue without database - services will use in-memory fallback
     }
 
     // Load all modules dynamically
@@ -96,7 +96,7 @@ async function startServer() {
       logger.info(`📝 Environment: ${config.nodeEnv}`);
       logger.info(`🌐 Port: ${config.port}`);
       logger.info(`🔗 API Prefix: ${config.apiPrefix}`);
-      logger.info(`🗄️  Database: Couchbase (Connected)`);
+      logger.info(`🗄️  Database: ${db.isReady() ? 'Couchbase (Connected)' : 'In-Memory (Fallback)'}`);
       logger.info(`📚 Swagger UI: http://localhost:${config.port}/api-docs`);
       logger.info(`📄 Swagger JSON: http://localhost:${config.port}/api-docs.json`);
       logger.info(`💚 Health Check: http://localhost:${config.port}/health`);

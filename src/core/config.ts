@@ -94,7 +94,6 @@ function parseMySQLConfig() {
     password: password || '',
     database: database || 'railway',
   };
-}
 
   // 4. CRITICAL FAILURE: No host found
   console.error('❌ FATAL: No valid MySQL Host found!');

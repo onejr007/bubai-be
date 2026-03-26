@@ -22,11 +22,18 @@ class ModuleLoader {
     modules.forEach(moduleName => {
       try {
         const routesPath = join(modulesPath, moduleName, 'routes.ts');
+        const routesJsPath = join(modulesPath, moduleName, 'routes.js');
         
-        if (existsSync(routesPath)) {
-          const { default: routes } = require(routesPath);
-          app.use(`${config.apiPrefix}/${moduleName}`, routes);
-          logger.info(`✅ Module loaded: ${moduleName}`);
+        // Check both .ts (dev) and .js (prod) files
+        const finalPath = existsSync(routesPath) ? routesPath : routesJsPath;
+        
+        if (existsSync(finalPath)) {
+          const { default: routes } = require(finalPath);
+          const fullPath = `${config.apiPrefix}/${moduleName}`;
+          app.use(fullPath, routes);
+          logger.info(`✅ Module loaded: ${moduleName} at ${fullPath}`);
+        } else {
+          logger.warn(`⚠️ No routes file found for module: ${moduleName}`);
         }
       } catch (error) {
         logger.error(`❌ Failed to load module ${moduleName}:`, error);

@@ -1,0 +1,10 @@
+# Railway Bulk Import - Copy & Paste ke Raw Editor
+
+PORT=3000
+NODE_ENV=production
+ALLOWED_ORIGINS=https://bub-ai.up.railway.app,https://bub-ai.web.app,http://localhost:5173
+API_PREFIX=/api/v1
+COUCHBASE_CONNECTION_STRING=couchbases://cb.s0ukypm-djhcdpt.cloud.couchbase.com
+COUCHBASE_USERNAME=bubai-be
+COUCHBASE_PASSWORD=Mario!23
+COUCHBASE_BUCKET=ai-collaborative

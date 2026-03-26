@@ -1,0 +1,26 @@
+# Railway CLI Commands - Copy & Paste
+
+# Install Railway CLI (if not installed)
+npm install -g @railway/cli
+
+# Login to Railway
+railway login
+
+# Link to your project
+railway link
+
+# Set all environment variables (copy all lines below)
+railway variables set PORT=3000
+railway variables set NODE_ENV=production
+railway variables set ALLOWED_ORIGINS="https://bub-ai.up.railway.app,https://bub-ai.web.app,http://localhost:5173"
+railway variables set API_PREFIX=/api/v1
+railway variables set COUCHBASE_CONNECTION_STRING="couchbases://cb.s0ukypm-djhcdpt.cloud.couchbase.com"
+railway variables set COUCHBASE_USERNAME=bubai-be
+railway variables set COUCHBASE_PASSWORD="Mario!23"
+railway variables set COUCHBASE_BUCKET=ai-collaborative
+
+# Redeploy
+railway up
+
+# View logs
+railway logs

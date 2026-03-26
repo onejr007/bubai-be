@@ -19,6 +19,14 @@ class DatabaseService {
       logger.info(`📍 Host: ${config.mysql.host}:${config.mysql.port}`);
       logger.info(`👤 User: ${config.mysql.user}`);
       logger.info(`🗄️  Database: ${config.mysql.database}`);
+      
+      // Debug: Log environment variables (without password)
+      logger.info('🔍 Environment check:');
+      logger.info(`  - MYSQLHOST: ${process.env.MYSQLHOST || 'NOT SET'}`);
+      logger.info(`  - MYSQLPORT: ${process.env.MYSQLPORT || 'NOT SET'}`);
+      logger.info(`  - MYSQLUSER: ${process.env.MYSQLUSER || 'NOT SET'}`);
+      logger.info(`  - MYSQLDATABASE: ${process.env.MYSQLDATABASE || 'NOT SET'}`);
+      logger.info(`  - MYSQLPASSWORD: ${process.env.MYSQLPASSWORD ? '***SET***' : 'NOT SET'}`);
 
       // Create connection pool
       this.pool = mysql.createPool({

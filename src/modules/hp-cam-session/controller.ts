@@ -87,6 +87,15 @@ class HpCamSessionController {
       next(error);
     }
   }
+
+  async getStats(req: Request, res: Response, next: NextFunction) {
+    try {
+      const stats = hpCamSessionService.getStats();
+      res.json({ status: 'success', data: stats });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export const hpCamSessionController = new HpCamSessionController();

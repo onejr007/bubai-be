@@ -180,4 +180,36 @@ router.get('/signal/:sessionId', hpCamSessionController.getSignals);
  */
 router.post('/end', hpCamSessionController.endSession);
 
+/**
+ * @swagger
+ * /api/v1/hp-cam-session/stats:
+ *   get:
+ *     summary: Get session storage statistics
+ *     tags: [HP Camera Session]
+ *     responses:
+ *       200:
+ *         description: Storage statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     storage:
+ *                       type: string
+ *                       enum: [couchbase, memory]
+ *                     sessions:
+ *                       type: number
+ *                     signals:
+ *                       type: number
+ *                     activeSessions:
+ *                       type: number
+ */
+router.get('/stats', hpCamSessionController.getStats);
+
 export default router;

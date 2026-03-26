@@ -1,5 +1,6 @@
 import { db } from '@/core/database';
 import { AppError } from '@/core/middleware/errorHandler';
+import { logger } from '@/core/logger';
 import { v4 as uuidv4 } from 'uuid';
 import { HpCamSession, WebRTCSignal, CreateSessionInput, JoinSessionInput, SendSignalInput } from './types';
 
@@ -10,10 +11,16 @@ class HpCamSessionService {
   private SIGNAL_TTL = 60; // 1 minute in seconds
 
   private getSessionCollection() {
+    if (!db.isReady()) {
+      throw new AppError(503, 'Database not connected');
+    }
     return db.getCollection('_default', this.sessionCollection);
   }
 
   private getSignalCollection() {
+    if (!db.isReady()) {
+      throw new AppError(503, 'Database not connected');
+    }
     return db.getCollection('_default', this.signalCollection);
   }
 
@@ -41,20 +48,21 @@ class HpCamSessionService {
 
     try {
       const collection = this.getSessionCollection();
-      // Store with TTL (auto-delete after expiration)
       await collection.insert(sessionId, session, {
         expiry: this.SESSION_TTL,
       });
-
+      
+      logger.info(`📱 Session created: ${sessionId} with pairing code: ${pairingCode}`);
       return session;
     } catch (error: any) {
+      logger.error('Failed to create session:', error);
       throw new AppError(500, 'Failed to create session');
     }
   }
 
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
     try {
-      // Find session by pairing code
+      // Find session by pairing code in Couchbase
       const cluster = db.getCluster();
       const bucketName = db.getBucket().name;
       
@@ -94,9 +102,11 @@ class HpCamSessionService {
         expiry: this.SESSION_TTL,
       });
 
+      logger.info(`🔗 Session paired: ${sessionId}`);
       return updated;
     } catch (error: any) {
       if (error instanceof AppError) throw error;
+      logger.error('Failed to join session:', error);
       throw new AppError(500, 'Failed to join session');
     }
   }
@@ -145,6 +155,7 @@ class HpCamSessionService {
       // Update session last activity
       await this.updateSessionActivity(input.sessionId);
     } catch (error: any) {
+      logger.error('Failed to send signal:', error);
       throw new AppError(500, 'Failed to send signal');
     }
   }
@@ -186,7 +197,8 @@ class HpCamSessionService {
       if (error.message?.includes('not found')) {
         return [];
       }
-      throw error;
+      logger.error('Failed to get signals:', error);
+      return [];
     }
   }
 
@@ -239,6 +251,8 @@ class HpCamSessionService {
       await collection.replace(sessionId, session, {
         expiry: 60, // Keep for 1 minute after ending
       });
+      
+      logger.info(`🔚 Session ended: ${sessionId}`);
     } catch (error: any) {
       if (error.message?.includes('document not found')) {
         throw new AppError(404, 'Session not found');
@@ -267,6 +281,15 @@ class HpCamSessionService {
     } catch (error) {
       return 0;
     }
+  }
+
+  // Get storage stats
+  getStats() {
+    return { 
+      storage: 'couchbase', 
+      connected: db.isReady(),
+      bucket: db.getBucket().name
+    };
   }
 }
 

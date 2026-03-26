@@ -67,30 +67,43 @@ app.get('/api-docs.json', (req, res) => {
 // Initialize Database and Start Server
 async function startServer() {
   try {
-    // Connect to Couchbase (optional in development)
+    // Connect to Couchbase (REQUIRED)
+    logger.info('🚀 Starting server initialization...');
+    
     try {
       await db.connect();
-    } catch (dbError) {
-      logger.warn('⚠️ Couchbase connection failed, continuing without database');
-      logger.warn('Database-dependent endpoints will not work');
+      logger.info('✅ Database connection established');
+    } catch (dbError: any) {
+      logger.error('❌ CRITICAL: Database connection failed!');
+      logger.error('Error:', dbError.message);
+      logger.error('⚠️ Server cannot start without database connection');
+      process.exit(1); // Exit if database connection fails
     }
 
     // Load all modules dynamically
+    logger.info('📦 Loading modules...');
     moduleLoader.loadModules(app);
+    logger.info('✅ Modules loaded successfully');
 
     // Error Handler (must be last)
     app.use(errorHandler);
 
     // Start Server
     app.listen(config.port, () => {
-      logger.info(`🚀 Server running on port ${config.port}`);
+      logger.info('='.repeat(60));
+      logger.info('🚀 Server running successfully!');
+      logger.info('='.repeat(60));
       logger.info(`📝 Environment: ${config.nodeEnv}`);
+      logger.info(`🌐 Port: ${config.port}`);
       logger.info(`🔗 API Prefix: ${config.apiPrefix}`);
+      logger.info(`🗄️  Database: Couchbase (Connected)`);
       logger.info(`📚 Swagger UI: http://localhost:${config.port}/api-docs`);
       logger.info(`📄 Swagger JSON: http://localhost:${config.port}/api-docs.json`);
+      logger.info(`💚 Health Check: http://localhost:${config.port}/health`);
+      logger.info('='.repeat(60));
     });
   } catch (error) {
-    logger.error('Failed to start server:', error);
+    logger.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 }

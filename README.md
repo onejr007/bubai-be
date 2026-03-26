@@ -1,6 +1,6 @@
 # Backend Documentation
 
-> **v2.0.1 - Node.js + Express + TypeScript Modular Backend**
+> **v2.1 - Node.js + Express + TypeScript Modular Backend**
 
 **Last Updated**: 2024-03-26
 
@@ -31,13 +31,14 @@ Backend ini menggunakan arsitektur modular yang memungkinkan:
 - ✅ Auto-loading modules
 - ✅ Auto-generated Swagger documentation
 - ✅ Centralized error handling
-- ✅ Database integration (Couchbase)
+- ✅ Database integration (MySQL & Couchbase)
 
 ### Tech Stack
 - Node.js >= 18
 - Express.js
 - TypeScript
-- Couchbase (optional)
+- MySQL (Primary)
+- Couchbase (Optional)
 
 ---
 
@@ -59,7 +60,13 @@ PORT=3000
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:5173
 
-# Database (optional)
+# Database MySQL
+MYSQL_HOST=localhost
+MYSQL_USER=root
+MYSQL_PASSWORD=your_password
+MYSQL_DATABASE=your_db
+
+# Couchbase (optional)
 DB_CONNECTION_STRING=couchbase://localhost
 DB_USERNAME=Administrator
 DB_PASSWORD=password
@@ -261,8 +268,8 @@ railway variables set CORS_ORIGIN=https://your-frontend.com
 **Detailed Guide**: [RAILWAY_DEPLOYMENT.md](./RAILWAY_DEPLOYMENT.md)
 
 ### Other Platforms
-- **Render**: [DEPLOYMENT.md](./DEPLOYMENT.md)
-- **Vercel**: [DEPLOYMENT.md](./DEPLOYMENT.md)
+- **Render**: [../DEPLOYMENT.md](../DEPLOYMENT.md)
+- **Vercel**: [../DEPLOYMENT.md](../DEPLOYMENT.md)
 
 ---
 
@@ -293,10 +300,10 @@ npm run build
 
 ### Database Connection Failed
 1. Verify credentials in `.env`
-2. Check database is running
+2. Check database (MySQL/Couchbase) is running
 3. Test connection: `curl http://localhost:8091`
 
-**More Solutions**: [../docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md)
+**More Solutions**: [../TROUBLESHOOTING.md](../TROUBLESHOOTING.md)
 
 ---
 
@@ -309,6 +316,6 @@ npm run build
 
 ---
 
-**Version**: 2.0.2
+**Version**: 2.1
 **Last Updated**: 2024-03-26
 **Need Help?** Check [Troubleshooting](#troubleshooting) atau [Main Documentation](../README.md)

@@ -4,76 +4,121 @@ dotenv.config();
 
 // Parse MYSQL_URL if provided (Railway format)
 function parseMySQLConfig() {
-  // DEBUG: Print ALL environment variables
-  console.log('='.repeat(60));
-  console.log('DEBUG: ALL ENVIRONMENT VARIABLES:');
-  console.log('='.repeat(60));
-  Object.keys(process.env).sort().forEach(key => {
-    if (key.includes('MYSQL') || key.includes('DATABASE')) {
-      // Show MySQL related vars with masked password
-      const value = process.env[key];
-      if (key.includes('PASSWORD') || key.includes('PASS')) {
-        console.log(`${key}=${value ? '***MASKED***' : 'undefined'}`);
-      } else {
-        console.log(`${key}=${value || '(empty)'}`);
-      }
-    }
-  });
-  console.log('='.repeat(60));
-  
-  // Check if MYSQLHOST is empty
-  if (!process.env.MYSQLHOST || process.env.MYSQLHOST.trim() === '') {
-    console.error('❌ CRITICAL: MYSQLHOST is empty!');
-    console.error('This means Railway MySQL service variables are not properly set.');
-    console.error('');
-    console.error('Possible causes:');
-    console.error('1. MySQL service is still provisioning (wait 1-2 minutes)');
-    console.error('2. Shared variables not properly linked');
-    console.error('3. MySQL service has an issue');
-    console.error('');
-    console.error('Solution:');
-    console.error('1. Check MySQL service status in Railway dashboard');
-    console.error('2. Verify MySQL service is running (green status)');
-    console.error('3. Check MySQL service Variables tab for MYSQLHOST value');
-    console.error('4. If MYSQLHOST exists in MySQL service, manually copy it to backend service');
-    console.error('');
-    throw new Error('MYSQLHOST environment variable is empty. Cannot connect to database.');
-  }
-  
   const mysqlUrl = process.env.MYSQL_URL;
-  
-  if (mysqlUrl && mysqlUrl.includes('@') && !mysqlUrl.includes('@:')) {
-    // MYSQL_URL has hostname
-    try {
-      const url = new URL(mysqlUrl);
-      console.log('✅ Parsed MYSQL_URL successfully:', {
-        host: url.hostname,
-        port: url.port,
-        user: url.username,
-        database: url.pathname.slice(1),
-      });
-      return {
-        host: url.hostname,
-        port: parseInt(url.port || '3306', 10),
-        user: url.username,
-        password: url.password,
-        database: url.pathname.slice(1),
-      };
-    } catch (error) {
-      console.warn('⚠️ Failed to parse MYSQL_URL, using individual variables');
-    }
-  } else if (mysqlUrl) {
-    console.warn('⚠️ MYSQL_URL is malformed (missing hostname):', mysqlUrl);
+  const publicUrl = process.env.MYSQL_PUBLIC_URL;
+  const host = process.env.MYSQLHOST;
+  const port = process.env.MYSQLPORT;
+  const user = process.env.MYSQLUSER;
+  const password = process.env.MYSQLPASSWORD;
+  const database = process.env.MYSQLDATABASE;
+
+  // DEBUG: Masked Variable Check
+  console.log('🔍 Database Environment Check:');
+  console.log(`  - MYSQLHOST: ${host || '(empty)'}`);
+  console.log(`  - MYSQLPORT: ${port || '(empty)'}`);
+  console.log(`  - MYSQLUSER: ${user || '(empty)'}`);
+  console.log(`  - MYSQLDATABASE: ${database || '(empty)'}`);
+  console.log(`  - MYSQLPASSWORD: ${password ? '***SET***' : '(empty)'}`);
+  console.log(`  - MYSQL_URL Trace: ${mysqlUrl ? mysqlUrl.replace(/:[^:@/]+@/, ':***PASSWORD***@') : '(empty)'}`);
+
+  // 1. Detect unresolved Railway references
+  if (host?.startsWith('${{')) {
+    console.error('❌ CRITICAL: Unresolved Railway Shared Variable detected!');
+    console.error(`MYSQLHOST is "${host}". Railway has not resolved this reference.`);
+    console.error('Action: Redeploy your service in the Railway dashboard.');
   }
-  
-  // Use individual environment variables
-  console.log('✅ Using individual environment variables');
+
+  // 2. Try to parse MYSQL_URL or MYSQL_PUBLIC_URL
+  const urlToParse = mysqlUrl || publicUrl;
+  if (urlToParse && urlToParse.includes('@')) {
+    try {
+      const url = new URL(urlToParse);
+      // Valid if hostname exists
+      if (url.hostname && url.hostname !== '') {
+        console.log('✅ Parsed Database URL successfully');
+        return {
+          host: url.hostname,
+          port: parseInt(url.port || '3306', 10),
+          user: url.username,
+          password: decodeURIComponent(url.password),
+          database: url.pathname.slice(1),
+        };
+      } else {
+        console.warn('⚠️  Database URL exists but has no hostname:', urlToParse.replace(/:[^:@/]+@/, ':***PASSWORD***@'));
+      }
+    } catch (error) {
+      console.warn('⚠️  Failed to parse Database URL, falling back to individual variables');
+    }
+  }
+
+  // 3. Fallback to individual variables
+  if (host && host.trim() !== '') {
+    console.log('✅ Using individual environment variables');
+    return {
+      host: host,
+      port: parseInt(port || '3306', 10),
+      user: user || 'root',
+      password: password || '',
+      database: database || 'railway',
+    };
+  }
+
+  // 3.5 Try Railway Private Networking Host (default: mysql)
+  if (process.env.RAILWAY_ENVIRONMENT) {
+    console.log('🌐 Railway Environment detected. Attempting internal host: "mysql"');
+    // We don't return here yet, we'll try this but keep public proxy as another option
+    // Actually, let's prioritize private networking but allow fallback
+  }
+
+  // 3.6 Project-Specific Public Proxy Fallback (User provided)
+  const fallbackHost = process.env.RAILWAY_ENVIRONMENT ? 'mysql' : 'crossover.proxy.rlwy.net';
+  const fallbackPort = process.env.RAILWAY_ENVIRONMENT ? 3306 : 26236;
+
+  if (process.env.RAILWAY_ENVIRONMENT) {
+    // Return private host as first choice in Railway
+    return {
+      host: 'mysql',
+      port: 3306,
+      user: user || 'root',
+      password: password || '',
+      database: database || 'railway',
+    };
+  }
+
+  // If we reach here outside Railway or if specifically needed
+  console.log(`🌐 Using project-specific fallback: ${fallbackHost}:${fallbackPort}`);
   return {
-    host: process.env.MYSQLHOST || 'localhost',
-    port: parseInt(process.env.MYSQLPORT || '3306', 10),
-    user: process.env.MYSQLUSER || 'root',
-    password: process.env.MYSQLPASSWORD || '',
-    database: process.env.MYSQLDATABASE || 'bubai',
+    host: fallbackHost,
+    port: fallbackPort,
+    user: user || 'root',
+    password: password || '',
+    database: database || 'railway',
+  };
+}
+
+  // 4. CRITICAL FAILURE: No host found
+  console.error('❌ FATAL: No valid MySQL Host found!');
+  console.error('Railway environment variables are missing or malformed.');
+  console.error('');
+  console.error('HOW TO FIX:');
+  console.error('1. Go to your Railway MySQL service -> Variables tab.');
+  console.error('2. Copy the value of MYSQLHOST (e.g., containers-us-west-xxx.railway.app).');
+  console.error('3. Go to your Backend service -> Variables tab.');
+  console.error('4. Manually add MYSQLHOST with the value you copied.');
+  console.error('5. Do the same for MYSQLPASSWORD and MYSQLPORT if they are missing.');
+  console.error('');
+  
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Database configuration failed. Check Railway environment variables.');
+  }
+
+  // Development defaults
+  return {
+    host: 'localhost',
+    port: 3306,
+    user: 'root',
+    password: '',
+    database: 'bubai',
   };
 }
 

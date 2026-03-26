@@ -7,28 +7,23 @@ class DatabaseService {
   private isConnected: boolean = false;
 
   async connect(): Promise<void> {
-    // MySQL connection is REQUIRED
-    if (!config.mysql.host || !config.mysql.user) {
-      const error = new Error('❌ MYSQL CREDENTIALS REQUIRED! Please configure MYSQLHOST and MYSQLUSER in environment variables');
+    // MySQL connection configuration check
+    if (!config.mysql.host) {
+      const error = new Error('❌ DATABASE HOST NOT FOUND! Application cannot start without a valid database connection.');
       logger.error(error.message);
+      logger.error('Possible Causes:');
+      logger.error('1. Railway environment variables are not yet resolved.');
+      logger.error('2. MYSQLHOST is missing in the Backend service variables.');
+      logger.error('3. Manual copy needed from MySQL service to Backend service.');
       throw error;
     }
 
     try {
-      logger.info('🔌 Connecting to MySQL...');
-      logger.info(`📍 Host: ${config.mysql.host}:${config.mysql.port}`);
+      logger.info('🔌 Attempting to connect to MySQL...');
+      logger.info(`📍 Target: ${config.mysql.host}:${config.mysql.port}`);
       logger.info(`👤 User: ${config.mysql.user}`);
       logger.info(`🗄️  Database: ${config.mysql.database}`);
       
-      // Debug: Log environment variables (without password)
-      logger.info('🔍 Environment check:');
-      logger.info(`  - MYSQL_URL: ${process.env.MYSQL_URL ? '***SET***' : 'NOT SET'}`);
-      logger.info(`  - MYSQLHOST: ${process.env.MYSQLHOST || 'NOT SET'}`);
-      logger.info(`  - MYSQLPORT: ${process.env.MYSQLPORT || 'NOT SET'}`);
-      logger.info(`  - MYSQLUSER: ${process.env.MYSQLUSER || 'NOT SET'}`);
-      logger.info(`  - MYSQLDATABASE: ${process.env.MYSQLDATABASE || 'NOT SET'}`);
-      logger.info(`  - MYSQLPASSWORD: ${process.env.MYSQLPASSWORD ? '***SET***' : 'NOT SET'}`);
-      logger.info(`  - Parsed config: ${config.mysql.host}:${config.mysql.port}`);
       // Create connection pool
       this.pool = mysql.createPool({
         host: config.mysql.host,
@@ -56,8 +51,22 @@ class DatabaseService {
       logger.info('✅ MySQL connected successfully!');
       logger.info('🎉 Database ready for operations');
     } catch (error: any) {
-      logger.error('❌ MySQL connection failed:', error);
-      logger.error('Stack:', error.stack);
+      logger.error('❌ MySQL Connection Failed!');
+      logger.error(`Error Code: ${error.code || 'UNKNOWN'}`);
+      logger.error(`Message: ${error.message}`);
+      
+      if (error.code === 'ECONNREFUSED') {
+        logger.error('💡 Hint: Connection refused usually means the host/port is wrong or the database is not accepting connections.');
+        if (config.mysql.host === 'localhost' || config.mysql.host === '127.0.0.1') {
+          logger.error('⚠️  CRITICAL: You are trying to connect to localhost in production!');
+          logger.error('Make sure Railway environment variables (MYSQLHOST) are correctly set.');
+        }
+      } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+        logger.error('💡 Hint: Check your database credentials (MYSQLUSER and MYSQLPASSWORD).');
+      } else if (error.code === 'ENOTFOUND') {
+        logger.error('💡 Hint: Hostname not found. Check if MYSQLHOST is correct.');
+      }
+      
       throw new Error(`Failed to connect to MySQL: ${error.message}`);
     }
   }

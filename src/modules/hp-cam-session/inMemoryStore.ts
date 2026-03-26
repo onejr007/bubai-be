@@ -78,14 +78,6 @@ class InMemorySessionStore {
     );
   }
 
-  markSignalDelivered(signalId: string): void {
-    const signal = this.signals.get(signalId);
-    if (signal) {
-      signal.delivered = true;
-      this.signals.set(signalId, signal);
-    }
-  }
-
   deleteSignal(signalId: string): void {
     this.signals.delete(signalId);
   }

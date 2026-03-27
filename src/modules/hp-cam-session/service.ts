@@ -56,54 +56,81 @@ class HpCamSessionService {
   }
 
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
+    const { sessionId, pairingCode, deviceId } = input;
+    
+    logger.info(`🔗 Attempting to join session: sessionId=${sessionId || 'null'}, pairingCode=${pairingCode || 'null'}, deviceId=${deviceId}`);
+
     try {
-      let query = `SELECT * FROM hp_cam_sessions WHERE status = 'waiting' AND expires_at > NOW()`;
+      // 1. First, try to find an active session by sessionId or pairingCode
+      let query = `SELECT * FROM hp_cam_sessions WHERE expires_at > NOW()`;
       const params: any[] = [];
 
-      if (input.sessionId) {
+      if (sessionId) {
         query += ` AND session_id = ?`;
-        params.push(input.sessionId);
-      } else if (input.pairingCode) {
+        params.push(sessionId);
+      } else if (pairingCode) {
         query += ` AND pairing_code = ?`;
-        params.push(input.pairingCode);
+        params.push(pairingCode);
       } else {
         throw new AppError(400, 'Either sessionId or pairingCode is required');
       }
 
-      query += ` LIMIT 1`;
-
       const rows = await db.query<RowDataPacket[]>(query, params);
 
       if (rows.length === 0) {
-        throw new AppError(404, input.sessionId ? 'Session not found or expired' : 'Invalid pairing code or session expired');
+        logger.warn(`❌ Session not found or expired: sessionId=${sessionId}, pairingCode=${pairingCode}`);
+        throw new AppError(404, sessionId ? 'Session not found or expired' : 'Invalid pairing code or session expired');
       }
 
       const sessionData = rows[0];
-      const sessionId = sessionData.session_id;
-      const pairedAt = new Date();
+      const actualSessionId = sessionData.session_id;
 
-      // Update session to paired
+      // 2. Check if already paired by the SAME device (Idempotency)
+      if (sessionData.status === 'paired' && sessionData.viewer_device_id === deviceId) {
+        logger.info(`✅ Session already paired with the same device: ${actualSessionId}`);
+        return {
+          sessionId: actualSessionId,
+          pairingCode: sessionData.pairing_code,
+          deviceId: sessionData.device_id,
+          status: 'paired',
+          hasViewer: true,
+          viewerDeviceId: deviceId,
+          createdAt: sessionData.created_at,
+          expiresAt: sessionData.expires_at,
+          pairedAt: sessionData.paired_at,
+          lastActivity: new Date().toISOString(),
+        };
+      }
+
+      // 3. If it's already paired by DIFFERENT device or ended, throw error
+      if (sessionData.status !== 'waiting') {
+        logger.warn(`❌ Session already in use or ended: ${actualSessionId}, status=${sessionData.status}`);
+        throw new AppError(400, `Session is already ${sessionData.status}`);
+      }
+
+      // 4. Update session to paired
+      const pairedAt = new Date();
       await db.query(
         `UPDATE hp_cam_sessions 
         SET status = 'paired', has_viewer = TRUE, viewer_device_id = ?, paired_at = ?, last_activity = ? 
         WHERE session_id = ?`,
-        [input.deviceId, pairedAt, pairedAt, sessionId]
+        [deviceId, pairedAt, pairedAt, actualSessionId]
       );
 
       const updated: HpCamSession = {
-        sessionId,
+        sessionId: actualSessionId,
         pairingCode: sessionData.pairing_code,
         deviceId: sessionData.device_id,
         status: 'paired',
         hasViewer: true,
-        viewerDeviceId: input.deviceId,
+        viewerDeviceId: deviceId,
         createdAt: sessionData.created_at,
         expiresAt: sessionData.expires_at,
         pairedAt: pairedAt.toISOString(),
         lastActivity: pairedAt.toISOString(),
       };
 
-      logger.info(`🔗 Session paired: ${sessionId}`);
+      logger.info(`🔗 Session successfully paired: ${actualSessionId}`);
       return updated;
     } catch (error: any) {
       if (error instanceof AppError) throw error;

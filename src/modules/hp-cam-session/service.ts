@@ -57,16 +57,25 @@ class HpCamSessionService {
 
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
     try {
-      // Find session by pairing code
-      const rows = await db.query<RowDataPacket[]>(
-        `SELECT * FROM hp_cam_sessions 
-        WHERE pairing_code = ? AND status = 'waiting' AND expires_at > NOW() 
-        LIMIT 1`,
-        [input.pairingCode]
-      );
+      let query = `SELECT * FROM hp_cam_sessions WHERE status = 'waiting' AND expires_at > NOW()`;
+      const params: any[] = [];
+
+      if (input.sessionId) {
+        query += ` AND session_id = ?`;
+        params.push(input.sessionId);
+      } else if (input.pairingCode) {
+        query += ` AND pairing_code = ?`;
+        params.push(input.pairingCode);
+      } else {
+        throw new AppError(400, 'Either sessionId or pairingCode is required');
+      }
+
+      query += ` LIMIT 1`;
+
+      const rows = await db.query<RowDataPacket[]>(query, params);
 
       if (rows.length === 0) {
-        throw new AppError(404, 'Invalid pairing code or session expired');
+        throw new AppError(404, input.sessionId ? 'Session not found or expired' : 'Invalid pairing code or session expired');
       }
 
       const sessionData = rows[0];

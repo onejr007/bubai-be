@@ -27,7 +27,8 @@ export interface CreateSessionInput {
 }
 
 export interface JoinSessionInput {
-  pairingCode: string;
+  pairingCode?: string;
+  sessionId?: string;
   deviceId: string;
 }
 

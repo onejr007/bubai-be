@@ -7,17 +7,17 @@ function parseMySQLConfig() {
   const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL || process.env.MYSQL_PUBLIC_URL;
 
   // Step 1: Start with individual env vars (highest priority — Railway injects these directly)
-  let host = process.env.MYSQLHOST || '';
-  let port = parseInt(process.env.MYSQLPORT || '3306', 10);
-  let user = process.env.MYSQLUSER || process.env.MYSQL_USER || '';
-  let password = process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
-  let database = process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'railway';
+  let host = (process.env.MYSQLHOST || '').trim();
+  let port = parseInt((process.env.MYSQLPORT || '').trim() || '3306', 10);
+  let user = (process.env.MYSQLUSER || process.env.MYSQL_USER || '').trim();
+  let password = (process.env.MYSQLPASSWORD || process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '').trim();
+  let database = (process.env.MYSQLDATABASE || process.env.MYSQL_DATABASE || 'railway').trim();
 
   // Step 2: Fill in any MISSING values from the URL (URL is fallback, not override)
   if (mysqlUrl) {
     try {
       // Use Node's built-in URL parser — handles special chars & percent-encoding correctly
-      const parsed = new URL(mysqlUrl);
+      const parsed = new URL(mysqlUrl.trim());
       console.log('🔑 Found credentials in Database URL...');
 
       if (!user && parsed.username) user = decodeURIComponent(parsed.username);
@@ -26,8 +26,8 @@ function parseMySQLConfig() {
       if (parsed.port && !process.env.MYSQLPORT) port = parseInt(parsed.port, 10);
       const dbFromUrl = parsed.pathname.replace(/^\//, '');
       if (!database || database === 'railway') database = dbFromUrl || database;
-    } catch (err) {
-      console.warn('⚠️  Could not parse MYSQL_URL — skipping URL-based credential extraction.');
+    } catch (err: any) {
+      console.warn(`⚠️  Could not parse MYSQL_URL (${err.message}) — skipping URL-based credential extraction.`);
     }
   }
 

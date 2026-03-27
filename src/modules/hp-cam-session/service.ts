@@ -230,20 +230,14 @@ class HpCamSessionService {
     }
   }
 
-  async getSignals(sessionId: string, forDevice: 'mobile' | 'viewer', since?: Date): Promise<WebRTCSignal[]> {
+  async getSignals(sessionId: string, forDevice: 'mobile' | 'viewer'): Promise<WebRTCSignal[]> {
     try {
-      let query = `
+      const query = `
         SELECT * FROM hp_cam_signals 
         WHERE session_id = ? AND to_device = ? AND delivered = FALSE
+        ORDER BY timestamp ASC
       `;
       const params: any[] = [sessionId, forDevice];
-
-      if (since) {
-        query += ` AND timestamp > ?`;
-        params.push(since);
-      }
-
-      query += ` ORDER BY timestamp ASC`;
 
       const rows = await db.query<RowDataPacket[]>(query, params);
 
@@ -257,6 +251,10 @@ class HpCamSessionService {
         timestamp: row.timestamp,
         delivered: row.delivered,
       }));
+
+      if (signals.length > 0) {
+        logger.info(`🔍 Polling signals: session=${sessionId}, device=${forDevice}, found=${signals.length}`);
+      }
 
       // Mark signals as delivered
       if (signals.length > 0) {

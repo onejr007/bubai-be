@@ -64,13 +64,11 @@ class HpCamSessionController {
   async getSignals(req: Request, res: Response, next: NextFunction) {
     try {
       const { sessionId } = req.params;
-      const { forDevice, since } = req.query;
+      const { forDevice } = req.query;
       
-      const sinceDate = since ? new Date(since as string) : undefined;
       const signals = await hpCamSessionService.getSignals(
         sessionId,
-        forDevice as 'mobile' | 'viewer',
-        sinceDate
+        forDevice as 'mobile' | 'viewer'
       );
       
       res.json({ status: 'success', data: { signals } });

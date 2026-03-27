@@ -200,6 +200,8 @@ class HpCamSessionService {
       delivered: false,
     };
 
+    logger.info(`📡 SIGNAL: session=${input.sessionId}, from=${input.from}, type=${input.type}`);
+
     try {
       await db.query(
         `INSERT INTO hp_cam_signals 

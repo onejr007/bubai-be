@@ -56,8 +56,18 @@ class HpCamSessionService {
   }
 
   async joinSession(input: JoinSessionInput): Promise<HpCamSession> {
-    const { sessionId, pairingCode, deviceId } = input;
+    let { sessionId, pairingCode, deviceId } = input;
     
+    // BACKWARDS COMPATIBILITY: If phone sends UUID in pairingCode field (due to caching old code)
+    // detect it and swap it to sessionId. UUID format: 8-4-4-4-12 hex chars.
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    
+    if (!sessionId && pairingCode && uuidRegex.test(pairingCode)) {
+      logger.info(`🔄 Backwards Compatibility Triggered: UUID detected in pairingCode field. Swapping to sessionId.`);
+      sessionId = pairingCode;
+      pairingCode = undefined;
+    }
+
     logger.info(`🔗 Attempting to join session: sessionId=${sessionId || 'null'}, pairingCode=${pairingCode || 'null'}, deviceId=${deviceId}`);
 
     try {
